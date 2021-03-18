@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Loan;
 use App\Models\ReceivedRepayment;
+use App\Models\ScheduledRepayment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -36,12 +37,18 @@ class LoanService
         $loan->user()->associate($user);
         $loan->save();
 
+        // TODO: need to implement pricing calculate here
+        // Complete calculate
+        $remainder = $amount % $terms;
+        $third = floor($amount / $terms);
+        $lastBit = $third + $remainder;
         for ($monthNum = 1; $monthNum <= $terms; $monthNum++) {
-            // TODO: need to implement pricing calculate here
-            $scheduleRepaymentAmount = ceil($amount / $terms);
+            if ($terms == $monthNum) {
+                $third = $lastBit;
+            }
             $scheduleRepayment = $loan->scheduledRepayments()->create([
-                'amount' => $scheduleRepaymentAmount,
-                'outstanding_amount' => $scheduleRepaymentAmount,
+                'amount' => $third,
+                'outstanding_amount' => $third,
                 'currency_code' => $currencyCode,
                 'due_date' => $processedAt instanceof Carbon
                     ? $processedAt->addMonths($monthNum)->format('Y-m-d')
@@ -81,12 +88,51 @@ class LoanService
             Log::info('Store received repayment success!');
             Log::debug('Received repayment data: ' . json_encode($receivedRepayment));
 
-            $loan->outstanding_amount = $loan->outstanding_amount - $amount;
+            $scheduleRepayments = $loan->scheduledRepayments()
+                ->where('status', ScheduledRepayment::STATUS_DUE)
+                ->orderBy('due_date')->get();
+
+            self::recursiveScheduleRepaymentUpdate($scheduleRepayments, $amount);
+            $loan->outstanding_amount = $loan->scheduledRepayments()
+                ->where('status', '<>', Loan::STATUS_REPAID)->sum('outstanding_amount');
+            if ($loan->outstanding_amount == 0) {
+                $loan->status = Loan::STATUS_REPAID;
+            }
             $loan->save();
         } else {
             Log::error('Store received repayment was failed!');
         }
 
         return $receivedRepayment;
+    }
+
+    /**
+     * @param $scheduleRepayments
+     * @param $amount
+     * @return false|null
+     */
+    protected function recursiveScheduleRepaymentUpdate($scheduleRepayments, $amount): ?bool
+    {
+        if ($scheduleRepayments->count() == 0) return null;
+        $firstScheduleRepayment = $scheduleRepayments->first();
+        if ($firstScheduleRepayment->outstanding_amount < $amount) {
+            $firstScheduleRepayment->status = ScheduledRepayment::STATUS_REPAID;
+            $firstScheduleRepayment->outstanding_amount = 0;
+            if ($firstScheduleRepayment->save()) {
+                return self::recursiveScheduleRepaymentUpdate(
+                    $scheduleRepayments->where('id', '<>', $firstScheduleRepayment->id),
+                    $amount - $firstScheduleRepayment->amount
+                );
+            }
+            return false;
+        } elseif ($firstScheduleRepayment->outstanding_amount == $amount) {
+            $firstScheduleRepayment->status = ScheduledRepayment::STATUS_REPAID;
+            $firstScheduleRepayment->outstanding_amount = 0;
+            return $firstScheduleRepayment->save();
+        } else {
+            $firstScheduleRepayment->outstanding_amount = $firstScheduleRepayment->outstanding_amount - $amount;
+            $firstScheduleRepayment->status = ScheduledRepayment::STATUS_PARTIAL;
+            return $firstScheduleRepayment->save();
+        }
     }
 }
