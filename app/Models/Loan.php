@@ -30,6 +30,7 @@ class Loan extends Model
      * @var array
      */
     protected $fillable = [
+        'id',
         'user_id',
         'amount',
         'terms',
@@ -57,5 +58,15 @@ class Loan extends Model
     public function scheduledRepayments()
     {
         return $this->hasMany(ScheduledRepayment::class, 'loan_id');
+    }
+
+    /**
+     * A Loan has many Scheduled Repayments
+     *
+     * @return HasMany
+     */
+    public function receivedRepayments(): HasMany
+    {
+        return $this->hasMany(ReceivedRepayment::class, 'loan_id');
     }
 }

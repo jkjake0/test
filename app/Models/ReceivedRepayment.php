@@ -23,7 +23,13 @@ class ReceivedRepayment extends Model
      * @var array
      */
     protected $fillable = [
-        //
+        'amount',
+        'currency_code',
+        'received_at',
+    ];
+
+    protected $casts = [
+        'received_at' => 'datetime:Y-m-d'
     ];
 
     /**
