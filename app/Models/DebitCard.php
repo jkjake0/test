@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\DefaultDatetimeFormat;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,7 +14,7 @@ use Illuminate\Notifications\Notifiable;
 
 class DebitCard extends Authenticatable
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, DefaultDatetimeFormat;
 
     /**
      * The table associated with the model.
@@ -29,6 +30,7 @@ class DebitCard extends Authenticatable
      */
     protected $fillable = [
         'user_id',
+        'debit_card_id',
         'number',
         'type',
         'expiration_date',
@@ -41,18 +43,9 @@ class DebitCard extends Authenticatable
      * @var array
      */
     protected $dates = [
+        'expiration_date',
         'disabled_at',
     ];
-
-    /**
-     * The attributes that should be cast to native types.
-     *
-     * @var array
-     */
-    protected $casts = [
-        'disabled_at' => 'datetime:Y-m-d H:i:s',
-    ];
-
 
     /**
      * A Debit Card belongs to a user

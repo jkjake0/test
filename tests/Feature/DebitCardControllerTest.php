@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\DebitCard;
+use App\Models\DebitCardTransaction;
 use App\Models\User;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,6 +16,8 @@ class DebitCardControllerTest extends TestCase
 
     protected User $user;
 
+    protected string $baseUrl = '/api';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -25,103 +28,236 @@ class DebitCardControllerTest extends TestCase
     public function testCustomerCanSeeAListOfDebitCards()
     {
         // get /debit-cards
+        $expectListCount = 10;
+        $expectStructure = [
+            '*' => [
+                'id',
+                'number',
+                'type',
+                'expiration_date',
+                'is_active',
+            ]
+        ];
+
+        DebitCard::factory($expectListCount)->create()->each(function ($debitCard) {
+            $debitCard->disabled_at = null; // Hack factory for active all cards expected
+            $debitCard->user_id = $this->user->id;
+            $debitCard->save();
+        });
+
+        // Hack factory or can get expected here
+        // $expectListCount for active debit card
+        /*
+        $expectListCount = DebitCard::with(['user'])->whereHas('user', function ($query) {
+            return $query->where('id', $this->user->id);
+        })->active()->count();
+        */
+
         $this->actingAs($this->user);
-        $response = $this->getJson(route('api.debit-cards.index'));
+        $response = $this->getJson(url("{$this->baseUrl}/debit-cards"));
+
+        // Expected
         $response->assertOk();
+        $response->assertJsonStructure($expectStructure);
+        $response->assertJsonCount($expectListCount);
     }
 
     public function testCustomerCannotSeeAListOfDebitCardsOfOtherCustomers()
     {
         // get /debit-cards
-        $debitCard = DebitCard::factory()->make();
-        $debitCard->user()->associate(User::factory()->create())->save();
+        $randomDebitCard = rand(1, 10);
+        $expectListCount = 0;
+
+        $otherUser = User::factory()->create();
+        DebitCard::factory($randomDebitCard)->create()->each(function ($debitCard) use($otherUser) {
+            $debitCard->user()->associate($otherUser)->save();
+        });
+
         $this->actingAs($this->user);
-        $response = $this->getJson(route('api.debit-cards.index'));
-        $response->assertJsonCount(0);
+        $response = $this->getJson(url("{$this->baseUrl}/debit-cards"));
+
+        // Expected
+        $response->assertOk();
+        $response->assertJsonCount($expectListCount);
     }
 
     public function testCustomerCanCreateADebitCard()
     {
         // post /debit-cards
-        $this->actingAs($this->user);
-        $response = $this->postJson(route('api.debit-cards.store'), [
+        $expectStatus = HttpResponse::HTTP_CREATED;
+        $expectDebitCardData = [
             'type' => 'visa'
-        ]);
-        $response->assertStatus(HttpResponse::HTTP_CREATED);
+        ];
+
+        $this->actingAs($this->user);
+        $response = $this->postJson(url("{$this->baseUrl}/debit-cards"), $expectDebitCardData);
+
+        // Expected
+        $response->assertStatus($expectStatus);
+        $response->assertJson($expectDebitCardData);
     }
 
     public function testCustomerCanSeeASingleDebitCardDetails()
     {
         // get api/debit-cards/{debitCard}
         $this->actingAs($this->user);
-        $response = $this->getJson(route('api.debit-cards.show', [
-            'debitCard' => DebitCard::factory()->make()->user()->associate($this->user)->save()
+        $debitCard = DebitCard::factory()->make();
+        $debitCard->user()->associate($this->user)->save();
+
+        $expectDebitCardData = $debitCard->only([
+            'id',
+            'number',
+            'type',
+            'expiration_date',
+            'is_active',
+        ]);
+
+        $response = $this->getJson(url("{$this->baseUrl}/debit-cards", [
+            'debitCard' => $debitCard
         ]));
+
+        // Expected
         $response->assertOk();
+        $response->assertExactJson($expectDebitCardData);
     }
 
     public function testCustomerCannotSeeASingleDebitCardDetails()
     {
         // get api/debit-cards/{debitCard}
+        $expectStatus = HttpResponse::HTTP_FORBIDDEN;
+
         $this->actingAs($this->user);
-        $response = $this->getJson(route('api.debit-cards.show', [
+        $response = $this->getJson(url("{$this->baseUrl}/debit-cards", [
             'debitCard' => DebitCard::factory()->make()->user()->associate(User::factory()->create())->save()
         ]));
-        $response->assertStatus(HttpResponse::HTTP_FORBIDDEN);
+
+        // Expected
+        $response->assertStatus($expectStatus);
     }
 
     public function testCustomerCanActivateADebitCard()
     {
         // put api/debit-cards/{debitCard}
-        $mockDebitCard = DebitCard::factory()->make();
-        $this->actingAs($this->user);
-        $response = $this->putJson(route('api.debit-cards.update', [
-            'debitCard' => $mockDebitCard->user()->associate($this->user)->save()
-        ]), [
-            'is_active' => true
-        ]);
-        $response->assertOk();
-        $response->assertJsonStructure([
+        $expectStructure = [
             'id',
             'number',
             'type',
             'expiration_date',
             'is_active',
+        ];
+
+        $mockDebitCard = DebitCard::factory()->make();
+        $mockDebitCard->user()->associate($this->user)->save();
+        $this->actingAs($this->user);
+
+        $response = $this->putJson(url("{$this->baseUrl}/debit-cards", [
+            'debitCard' => $mockDebitCard
+        ]), [
+            'is_active' => true
         ]);
+
+        // Expected
+        $response->assertOk();
+        $response->assertJsonStructure($expectStructure);
     }
 
     public function testCustomerCanDeactivateADebitCard()
     {
         // put api/debit-cards/{debitCard}
-        $this->actingAs($this->user);
-        $response = $this->putJson(route('api.debit-cards.update', [
-            'debitCard' => DebitCard::factory()->make()->user()->associate($this->user)->save()
-        ]), [
+        $dataDeactivateCard = [
             'is_active' => false
-        ]);
+        ];
+        $debitCard = DebitCard::factory()->make();
+        $debitCard->user()->associate($this->user)->save();
+        $expectStructure = [
+            'id',
+            'number',
+            'type',
+            'expiration_date',
+            'is_active',
+        ];
+
+        $this->actingAs($this->user);
+        $response = $this->putJson(url("{$this->baseUrl}/debit-cards", [
+            'debitCard' => $debitCard
+        ]), $dataDeactivateCard);
+
+        // Expected
         $response->assertOk();
-        $response->assertJsonStructure([
+        $response->assertJsonStructure($expectStructure);
+    }
+
+    public function testCustomerCannotUpdateADebitCardWithWrongValidation()
+    {
+        // put api/debit-cards/{debitCard}
+        $wrongData = [
+            'wrong-key' => 'wrong-value'
+        ];
+        $debitCard = DebitCard::factory()->make();
+        $debitCard->user()->associate($this->user)->save();
+        $expectStatus = HttpResponse::HTTP_UNPROCESSABLE_ENTITY;
+
+        $this->actingAs($this->user);
+        $response = $this->putJson(url("{$this->baseUrl}/debit-cards", [
+            'debitCard' => $debitCard
+        ]), $wrongData);
+
+        // Expected
+        $response->assertStatus($expectStatus);
+    }
+
+    public function testCustomerCanDeleteADebitCard()
+    {
+        // delete api/debit-cards/{debitCard}
+        $this->actingAs($this->user);
+        $debitCard = DebitCard::factory()->make();
+        $debitCard->user()->associate($this->user)->save();
+        $expectDeleteStatus = HttpResponse::HTTP_NO_CONTENT;
+        $expectTryToGetAfterDeleteStatus = HttpResponse::HTTP_NOT_FOUND;
+
+        // try to delete it
+        $response = $this->deleteJson(url("{$this->baseUrl}/debit-cards", [
+            'debitCard' => $debitCard
+        ]));
+        $response->assertStatus($expectDeleteStatus);
+
+        // try get it again
+        $response = $this->getJson(url("{$this->baseUrl}/debit-cards", [
+            'debitCard' => $debitCard
+        ]));
+        $response->assertStatus($expectTryToGetAfterDeleteStatus);
+    }
+
+    public function testCustomerCannotDeleteADebitCardWithTransaction()
+    {
+        // delete api/debit-cards/{debitCard}
+        $this->actingAs($this->user);
+        $debitCard = DebitCard::factory()->make();
+        $debitCardTransaction = DebitCardTransaction::factory()->make();
+        $debitCard->user()->associate($this->user)->save();
+        $debitCard->debitCardTransactions()->create($debitCardTransaction->toArray());
+
+        $expectDeleteStatus = HttpResponse::HTTP_FORBIDDEN;
+        $expectGetSingleDebitCardAfterDeleteCallFailed = $debitCard->only([
             'id',
             'number',
             'type',
             'expiration_date',
             'is_active',
         ]);
-    }
 
-    public function testCustomerCannotUpdateADebitCardWithWrongValidation()
-    {
-        // put api/debit-cards/{debitCard}
-    }
+        // try to delete it
+        $response = $this->deleteJson(url("{$this->baseUrl}/debit-cards", [
+            'debitCard' => $debitCard
+        ]));
+        $response->assertStatus($expectDeleteStatus);
 
-    public function testCustomerCanDeleteADebitCard()
-    {
-        // delete api/debit-cards/{debitCard}
-    }
-
-    public function testCustomerCannotDeleteADebitCardWithTransaction()
-    {
-        // delete api/debit-cards/{debitCard}
+        // try get it again
+        $response = $this->getJson(url("{$this->baseUrl}/debit-cards", [
+            'debitCard' => $debitCard
+        ]));
+        $response->assertOk();
+        $response->assertExactJson($expectGetSingleDebitCardAfterDeleteCallFailed);
     }
 
     // Extra bonus for extra tests :)

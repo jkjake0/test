@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Traits\DefaultDatetimeFormat;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,11 +11,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Loan extends Model
 {
+    use DefaultDatetimeFormat;
+
     public const STATUS_DUE = 'due';
     public const STATUS_REPAID = 'repaid';
 
     public const CURRENCY_SGD = 'SGD';
     public const CURRENCY_VND = 'VND';
+
+    public const DATE_FORMAT = 'Y-m-d';
 
     use HasFactory;
 
@@ -30,7 +36,6 @@ class Loan extends Model
      * @var array
      */
     protected $fillable = [
-        'id',
         'user_id',
         'amount',
         'terms',
@@ -39,6 +44,33 @@ class Loan extends Model
         'processed_at',
         'status',
     ];
+
+    protected $casts = [
+        'processed_at' => 'datetime:Y-m-d'
+    ];
+
+    protected $dates = [
+        'processed_at',
+    ];
+
+    /**
+     * Mutator processed_at
+     * @param $value
+     */
+    public function setProcessedAtAttribute($value) {
+        $this->attributes['processed_at'] = $value instanceof Carbon
+            ? $value->format(Loan::DATE_FORMAT)
+            : Carbon::createFromFormat(Loan::DATE_FORMAT, $value)->format(Loan::DATE_FORMAT);
+    }
+
+    /**
+     * Accessor processed_at
+     */
+    public function getProcessedAtAttribute() {
+        $this->attributes['processed_at'] = $this->attributes['processed_at'] instanceof Carbon
+            ? $this->attributes['processed_at']->format(Loan::DATE_FORMAT)
+            : Carbon::createFromFormat(Loan::DATE_FORMAT, $this->attributes['processed_at'])->format(Loan::DATE_FORMAT);
+    }
 
     /**
      * A Loan belongs to a User

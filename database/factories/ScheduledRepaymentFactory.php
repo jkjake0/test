@@ -2,6 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Models\DebitCardTransaction;
+use App\Models\Loan;
 use App\Models\ScheduledRepayment;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -21,8 +23,23 @@ class ScheduledRepaymentFactory extends Factory
      */
     public function definition(): array
     {
+        $amount = $this->faker->randomNumber();
+        $outstandingAmount = $this->faker->randomNumber();
+        if ($outstandingAmount < $amount) {
+            $status = ScheduledRepayment::STATUS_PARTIAL;
+        } elseif ($outstandingAmount == $amount) {
+            $status = ScheduledRepayment::STATUS_REPAID;
+        } else {
+            $status = ScheduledRepayment::STATUS_REPAID;
+            $outstandingAmount = $amount;
+        }
         return [
-            // TODO: Complete factory
+            'loan_id' => fn () => Loan::factory()->create(),
+            'amount' => $amount,
+            'outstanding_amount' => $outstandingAmount,
+            'currency_code' => DebitCardTransaction::CURRENCIES,
+            'due_date' => $this->faker->date(ScheduledRepayment::DATE_FORMAT),
+            'status' => $status,
         ];
     }
 }
