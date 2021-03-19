@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\DefaultDatetimeFormat;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ReceivedRepayment extends Model
 {
-    use HasFactory;
+    use HasFactory, DefaultDatetimeFormat;
 
     /**
      * The table associated with the model.
@@ -23,7 +24,17 @@ class ReceivedRepayment extends Model
      * @var array
      */
     protected $fillable = [
-        //
+        'loan_id',
+        'amount',
+        'currency_code',
+        'received_at',
+    ];
+
+    /**
+     * @var string[]
+     */
+    protected $dates = [
+        'received_at',
     ];
 
     /**

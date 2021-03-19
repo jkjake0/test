@@ -5,8 +5,10 @@ namespace Tests\Unit;
 use App\Models\Loan;
 use App\Models\ScheduledRepayment;
 use App\Models\User;
-use App\Services\LoanService;
+use App\Contracts\LoanService as LoanServiceContract;
+use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 class LoanServiceTest extends TestCase
@@ -14,13 +16,18 @@ class LoanServiceTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
-    protected LoanService $loanService;
+    protected LoanServiceContract $loanService;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->user = User::factory()->create();
-        $this->loanService = new LoanService();
+        try {
+            $this->loanService = app()->make(LoanServiceContract::class);
+        } catch (BindingResolutionException $e) {
+            Log::warning('We got issue in binding !');
+            Log::error($e->getMessage());
+        }
     }
 
     public function testServiceCanCreateLoanOfForACustomer()
